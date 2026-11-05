@@ -1,15 +1,11 @@
 '============================================================
 ' MODULO CORREGIDO - INFORME GENERAL / SOLICITUDES
-' Objetivo: Mostrar TODOS los registros del exportado, sin filtrar por gestantes.
-' Mantener el dashboard y las tablas actualizadas desde VBA sin mover celdas a mano.
-' Reemplaza el modulo actual y deja el filtro general en FALSE.
+' Objetivo: cargar TODOS los registros y dejar el dashboard ordenado
+' sin tocar manualmente las hojas ni los rangos.
 '============================================================
 Option Explicit
 Option Compare Text
 
-'======================================================================
-'  CONFIGURACION
-'======================================================================
 Private Const RUTA_WORD As String = "C:\Users\1025885461\Desktop\jhonny amorocho\aplicativos\informe general de solicitudes\Informe_General.docx"
 Private Const CARPETA_INICIAL As String = "C:\Ruta\"
 
@@ -18,45 +14,18 @@ Public Const HOJA_TABLA    As String = "Tabla general"
 Public Const HOJA_RESUMEN  As String = "Resumen general"
 Public Const NOMBRE_TABLA  As String = "TablaGeneral"
 
-Private Const ENCABEZADO_FILTRO As String = "poblacionpriorsg"
-Private Const COLUMNA_FILTRO_RESPALDO As Long = 58
-Private Const VALOR_FILTRO As String = "Gestante"
-
-Private Const ENCABEZADO_FECHA_NAC As String = "fechanacimiento"
-Private Const COLUMNA_FECHA_NAC_RESPALDO As Long = 10
-Private Const EDAD_MAXIMA_EXCLUSIVA As Long = 46
-Private Const INCLUIR_SIN_FECHA_NAC As Boolean = False
-Private Const ENCABEZADO_SEXO As String = "sexo"
-Private Const COLUMNA_SEXO_RESPALDO As Long = 11
-Private Const VALOR_SEXO As String = "F"
+Private Const FILTRAR_SOLO_GESTANTES As Boolean = False
 
 Private Const WORD_VISIBLE As Boolean = False
 Private Const HACER_RESPALDO_WORD As Boolean = True
-Private Const MAX_EPS As Long = 25
-Private Const MAX_TIPOS As Long = 8
-Private Const MAX_EPS_TABLA As Long = 40
-Private Const MAX_SUBCLASIF As Long = 8
 Private Const ACTUALIZAR_FECHA_CORTE As Boolean = False
 Private Const CELDA_FECHA_CORTE As String = "C3"
-
-' IMPORTANTE: para que muestre TODOS los registros, debe quedar en FALSE.
-Private Const FILTRAR_SOLO_GESTANTES As Boolean = False
-
-Private Const C_AZUL_OSC As Long = 5713935
-Private Const C_AZUL As Long = 11893309
-Private Const C_NARANJA As Long = 3843061
-Private Const C_CELESTE As Long = 14730141
-Private Const C_GRIS As Long = 10719103
-Private Const C_ROJO As Long = 3365600
 
 Private mWbOrigen As Workbook
 Private mWdApp As Object
 Private mWdDoc As Object
 Private mFilasExport As Long
 
-'======================================================================
-'  MACRO PRINCIPAL
-'======================================================================
 Public Sub ActualizarInformeGestantes()
     Dim rutaExport As Variant
     Dim nFilas As Long
@@ -67,14 +36,14 @@ Public Sub ActualizarInformeGestantes()
     calcPrevio = Application.Calculation
     On Error GoTo Manejador
 
-    paso = "validacion de la ruta del Word"
+    paso = "validación de la ruta del Word"
     If Len(Dir(RUTA_WORD)) = 0 Then
-        MsgBox "No se encuentra el Word en:" & vbCrLf & RUTA_WORD & vbCrLf & vbCrLf & _
-               "Corrige la constante RUTA_WORD al inicio del modulo.", vbCritical, "Ruta no valida"
+        MsgBox "No se encontró el Word en:" & vbCrLf & RUTA_WORD & vbCrLf & vbCrLf & _
+               "Corrige la constante RUTA_WORD al inicio del módulo.", vbCritical, "Ruta no válida"
         Exit Sub
     End If
 
-    paso = "seleccion del archivo exportado"
+    paso = "selección del archivo exportado"
     If Len(Dir(CARPETA_INICIAL, vbDirectory)) > 0 Then
         On Error Resume Next
         ChDir CARPETA_INICIAL
@@ -83,7 +52,7 @@ Public Sub ActualizarInformeGestantes()
 
     rutaExport = Application.GetOpenFilename(FileFilter:="Archivos de Excel (*.xlsx),*.xlsx", Title:="Seleccione el archivo exportado del SAC")
     If VarType(rutaExport) = vbBoolean Then
-        MsgBox "Proceso cancelado. No se modifico ningun archivo.", vbInformation
+        MsgBox "Proceso cancelado. No se modificó ningún archivo.", vbInformation
         Exit Sub
     End If
 
@@ -95,12 +64,13 @@ Public Sub ActualizarInformeGestantes()
     paso = "PASO 1 (carga del exportado)"
     nFilas = CargarDatos(CStr(rutaExport))
     If nFilas = 0 Then
-        MsgBox "El archivo seleccionado no contiene filas de datos." & vbCrLf & "No se modifico el libro maestro.", vbExclamation
+        MsgBox "El archivo seleccionado no contiene filas de datos válidas.", vbExclamation, "Sin datos"
         GoTo Limpieza
     End If
 
-    paso = "PASO 2 (ajuste de tabla y recalculo)"
+    paso = "PASO 2 (ajuste de tabla y recálculo)"
     AjustarTabla nFilas
+
     If ACTUALIZAR_FECHA_CORTE Then
         ThisWorkbook.Worksheets(HOJA_RESUMEN).Range(CELDA_FECHA_CORTE).Value = Date
     End If
@@ -111,17 +81,16 @@ Public Sub ActualizarInformeGestantes()
     Application.CalculateUntilAsyncQueriesDone
     Application.Calculate
 
-    ' Actualizar dashboard ANTES del Save
+    paso = "PASO 2.5 (actualización del Dashboard)"
     ActualizarDashboardVBA
     ThisWorkbook.Save
 
-    paso = "PASO 3 (actualizacion del Word)"
+    paso = "PASO 3 (actualización del Word)"
     msgWord = ActualizarWord(nFilas)
 
     MsgBox "Informe actualizado correctamente." & vbCrLf & vbCrLf & _
            "Filas en el exportado: " & mFilasExport & vbCrLf & _
-           "Registros cargados: " & nFilas & vbCrLf & msgWord, _
-           vbInformation, "Listo"
+           "Registros cargados: " & nFilas & vbCrLf & msgWord, vbInformation, "Proceso completado"
 
 Limpieza:
     On Error Resume Next
@@ -131,6 +100,7 @@ Limpieza:
     Set mWdDoc = Nothing
     If Not mWdApp Is Nothing Then mWdApp.Quit 0
     Set mWdApp = Nothing
+
     Application.CutCopyMode = False
     Application.Calculation = calcPrevio
     Application.EnableEvents = True
@@ -139,14 +109,11 @@ Limpieza:
     Exit Sub
 
 Manejador:
-    MsgBox "Error en " & paso & ":" & vbCrLf & vbCrLf & "[" & Err.Number & "] " & Err.Description, vbCritical, "No se pudo completar"
+    MsgBox "Error en " & paso & ":" & vbCrLf & vbCrLf & _
+           "[" & Err.Number & "] " & Err.Description, vbCritical, "No se pudo completar"
     Resume Limpieza
 End Sub
 
-'======================================================================
-'  CARGA DEL EXPORTADO
-'  Mantener vivo el comportamiento de todos los registros.
-'======================================================================
 Private Function CargarDatos(ByVal ruta As String) As Long
     Dim wsO As Worksheet, wsD As Worksheet
     Dim ultFila As Long, ultCol As Long
@@ -164,8 +131,6 @@ Private Function CargarDatos(ByVal ruta As String) As Long
     Set rngTodo = wsO.Range(wsO.Cells(1, 1), wsO.Cells(ultFila, ultCol))
     Set wsD = HojaPorPatron(ThisWorkbook, HOJA_DESTINO)
     wsD.Cells.ClearContents
-
-    ' SIN FILTRO: copia todos los registros del exportado.
     rngTodo.Copy Destination:=wsD.Range("A1")
     Application.CutCopyMode = False
     CargarDatos = ultFila - 1
@@ -175,12 +140,8 @@ Salir:
     Set mWbOrigen = Nothing
 End Function
 
-'======================================================================
-'  AJUSTAR TABLA GENERAL
-'======================================================================
 Private Sub AjustarTabla(ByVal n As Long)
     Dim ws As Worksheet, lo As ListObject, actual As Long
-
     Set ws = ThisWorkbook.Worksheets(HOJA_TABLA)
     If Not ExisteTabla(ws, NOMBRE_TABLA) Then Exit Sub
     Set lo = ws.ListObjects(NOMBRE_TABLA)
@@ -205,255 +166,243 @@ Private Sub AjustarTabla(ByVal n As Long)
     End If
 End Sub
 
-'======================================================================
-'  DASHBOARD / RESUMEN GENERAL - NO GESTANTES
-'  En esta version se muestran TODOS los datos del exportado.
-'======================================================================
 Private Sub ActualizarDashboardVBA()
-    Dim ws As Worksheet, wsT As Worksheet, lo As ListObject
-    Dim total As Long, i As Long
-    Dim arr As Variant, arr2 As Variant, arr3 As Variant
-    Dim sumaEdad As Double, countEdad As Long
-    Dim v As Variant, k As Variant
-    Dim dict As Object
-    Dim clave As Variant
-    Dim fila As Long, col As Long
-    Dim cPriorizados As Long, cBarreras As Long, cSolucionadas As Long, cTramite As Long
+    Dim ws As Worksheet
+    Dim lo As ListObject
+    Dim total As Long
+    Dim sumaEdad As Double, nEdad As Long
+    Dim arr As Variant
+    Dim i As Long
 
     Set ws = ThisWorkbook.Worksheets(HOJA_RESUMEN)
-    Set wsT = ThisWorkbook.Worksheets(HOJA_TABLA)
-    If Not ExisteTabla(wsT, NOMBRE_TABLA) Then Exit Sub
-    Set lo = wsT.ListObjects(NOMBRE_TABLA)
-    If lo.DataBodyRange Is Nothing Then Exit Sub
+    Set lo = ThisWorkbook.Worksheets(HOJA_TABLA).ListObjects(NOMBRE_TABLA)
+    If lo Is Nothing Or lo.DataBodyRange Is Nothing Then Exit Sub
 
     total = lo.ListRows.Count
 
-    ' Tarjetas superiores
+    ' --- tarjetas superiores ---
     ws.Range("B6").Value = total
-    ws.Range("D6").Value = CuentaCampo(lo, "prioridad_caso", "Priorizado") + CuentaCampo(lo, "prioridad_caso", "Riesgo Vital")
-    ws.Range("G6").Value = CuentaBarreras(lo)
-    ws.Range("I6").Value = CuentaCampo(lo, "estadosolicitud", "Solucionada")
-    ws.Range("D10").Value = CuentaNoSolucionadas(lo)
+    ws.Range("D6").Value = CountField(lo, "prioridad_caso", "Priorizado") + CountField(lo, "prioridad_caso", "Riesgo Vital")
+    ws.Range("G6").Value = CountBarreras(lo)
+    ws.Range("I6").Value = CountField(lo, "estadosolicitud", "Solucionada")
+    ws.Range("D10").Value = CountNoSolucionadas(lo)
 
-    ' Edad promedio
-    sumaEdad = 0: countEdad = 0
+    sumaEdad = 0: nEdad = 0
     arr = lo.ListColumns("edad").DataBodyRange.Value
     If IsArray(arr) Then
         For i = 1 To UBound(arr, 1)
             If IsNumeric(arr(i, 1)) Then
                 sumaEdad = sumaEdad + CDbl(arr(i, 1))
-                countEdad = countEdad + 1
+                nEdad = nEdad + 1
             End If
         Next i
     Else
         If IsNumeric(arr) Then
             sumaEdad = CDbl(arr)
-            countEdad = 1
+            nEdad = 1
         End If
     End If
-    If countEdad > 0 Then ws.Range("B10").Value = Round(sumaEdad / countEdad, 1) Else ws.Range("B10").Value = 0
+    If nEdad > 0 Then ws.Range("B10").Value = Round(sumaEdad / nEdad, 1) Else ws.Range("B10").Value = 0
 
-    ' Comenzar limpiando bloques de resumen.
-    LimpiarBloqueResumen ws
+    ' --- limpiar bloques del dashboard de forma segura ---
+    ClearRange ws, 15, 105, 2, 11
 
-    ' 1) Tabla de riesgo de atención
-    LlenarBloqueCategoria ws, 15, 2, 3, lo, "prioridad_caso", "Priorizado", "Riesgo Vital", "Sin dato"
+    ' --- resumen general en bloques no solapados ---
+    WriteCategoryBlock ws, 15, 2, 3, "prioridad_caso", Array("Priorizado", "Riesgo Vital", "Sin dato", "N/A")
+    WriteCategoryBlock ws, 15, 7, 8, "grupo_etario", Array("Sin dato", "N/A")
+    WriteCategoryBlock ws, 24, 2, 3, "barrera_acceso", Array("N/A", "Sin dato")
+    WriteCategoryBlock ws, 24, 7, 8, "sexo", Array("Sin dato", "N/A")
+    WriteCategoryBlock ws, 36, 2, 3, "estadosolicitud", Array("Solucionada", "Sin dato", "N/A")
+    WriteCategoryBlock ws, 47, 2, 3, "solicitud", Array("Sin dato", "N/A")
+    WriteCategoryBlock ws, 57, 7, 8, "subclasificacion", Array("Sin dato", "N/A")
 
-    ' 2) Distribucion por grupo etario
-    LlenarBloqueCategoria ws, 15, 7, 8, lo, "grupo_etario", "Sin dato"
+    WriteEPSBlock ws, 36, 7, 8
 
-    ' 3) Barreras de acceso
-    LlenarBloqueCategoria ws, 25, 2, 3, lo, "barrera_acceso", "N/A", "Sin dato"
+    ' --- cabeceras y textos de apoyo ---
+    ws.Range("B13").Value = "Riesgos de atención"
+    ws.Range("G13").Value = "Distribución por grupo etario"
+    ws.Range("B23").Value = "Barreras de acceso"
+    ws.Range("G23").Value = "Participación por sexo"
+    ws.Range("B35").Value = "Estado de la solicitud"
+    ws.Range("G35").Value = "EPS"
+    ws.Range("B46").Value = "Tipos de solicitud"
+    ws.Range("G46").Value = "Subclasificaciones"
 
-    ' 4) Sexo
-    LlenarBloqueCategoria ws, 28, 7, 8, lo, "sexo"
-
-    ' 5) Estado solicitud
-    LlenarBloqueCategoria ws, 36, 2, 3, lo, "estadosolicitud", "Solucionada"
-
-    ' 6) Tipo de solicitud
-    LlenarBloqueCategoria ws, 47, 2, 3, lo, "solicitud"
-
-    ' 7) Subclasificacion
-    LlenarBloqueCategoria ws, 57, 7, 8, lo, "subclasificacion"
-
-    ' 8) EPS
-    LlenarBloqueEPS ws, 36
-
-    ' TEXTO GENERAL (sin gestantes)
-    ws.Range("A1").Value = ""
-    ws.Range("C2").Value = Date
-    ws.Range("F2").Value = "Fuente: " & total & " solicitudes cargadas "
-    ws.Range("A3").Value = ""
-
-    ' Nota de encabezado general
-    ws.Range("A4").Value = "Total de solicitudes del archivo exportado"
+    ws.Range("K15").Value = "Observaciones"
 End Sub
 
-Private Sub LimpiarBloqueResumen(ws As Worksheet)
+Private Sub WriteCategoryBlock(ws As Worksheet, ByVal startRow As Long, ByVal catCol As Long, ByVal valCol As Long, ByVal fieldName As String, ByVal excludeValues As Variant)
+    Dim lo As ListObject
+    Dim dict As Object
+    Dim arr As Variant
+    Dim i As Long, n As Long
+    Dim key As Variant
+    Dim keys As Variant, values As Variant
+    Dim r As Long
+
+    Set lo = ThisWorkbook.Worksheets(HOJA_TABLA).ListObjects(NOMBRE_TABLA)
+    Set dict = CreateObject("Scripting.Dictionary")
+    arr = lo.ListColumns(fieldName).DataBodyRange.Value
+
+    If IsArray(arr) Then
+        For i = 1 To UBound(arr, 1)
+            key = Trim$(CStr(arr(i, 1)))
+            If Len(key) > 0 And Not IsExcluded(key, excludeValues) Then
+                dict(key) = dict(key) + 1
+            End If
+        Next i
+    Else
+        key = Trim$(CStr(arr))
+        If Len(key) > 0 And Not IsExcluded(key, excludeValues) Then dict(key) = dict(key) + 1
+    End If
+
+    If dict.Count = 0 Then Exit Sub
+
+    keys = dict.Keys
+    values = dict.Items
+    For i = LBound(values) To UBound(values) - 1
+        For n = i + 1 To UBound(values)
+            If CLng(values(n)) > CLng(values(i)) Then
+                SwapVariant keys, i, n
+                SwapVariant values, i, n
+            End If
+        Next n
+    Next i
+
+    r = startRow
+    For i = LBound(keys) To UBound(keys)
+        If r > startRow + 30 Then Exit For
+        ws.Cells(r, catCol).Value = keys(i)
+        ws.Cells(r, valCol).Value = values(i)
+        r = r + 1
+    Next i
+End Sub
+
+Private Sub WriteEPSBlock(ws As Worksheet, ByVal startRow As Long, ByVal epsCol As Long, ByVal valCol As Long)
+    Dim lo As ListObject
+    Dim dict As Object
+    Dim arr As Variant
+    Dim i As Long, r As Long
+    Dim key As Variant
+    Dim keys As Variant, values As Variant
+
+    Set lo = ThisWorkbook.Worksheets(HOJA_TABLA).ListObjects(NOMBRE_TABLA)
+    Set dict = CreateObject("Scripting.Dictionary")
+    arr = lo.ListColumns("epsvigentesg").DataBodyRange.Value
+
+    If IsArray(arr) Then
+        For i = 1 To UBound(arr, 1)
+            key = Trim$(CStr(arr(i, 1)))
+            If Len(key) > 0 Then dict(key) = dict(key) + 1
+        Next i
+    Else
+        key = Trim$(CStr(arr))
+        If Len(key) > 0 Then dict(key) = dict(key) + 1
+    End If
+
+    If dict.Count = 0 Then Exit Sub
+
+    keys = dict.Keys
+    values = dict.Items
+    For i = LBound(values) To UBound(values) - 1
+        For r = i + 1 To UBound(values)
+            If CLng(values(r)) > CLng(values(i)) Then
+                SwapVariant keys, i, r
+                SwapVariant values, i, r
+            End If
+        Next r
+    Next i
+
+    r = startRow
+    For i = LBound(keys) To UBound(keys)
+        If r > startRow + 40 Then Exit For
+        ws.Cells(r, epsCol).Value = keys(i)
+        ws.Cells(r, valCol).Value = values(i)
+        r = r + 1
+    Next i
+End Sub
+
+Private Function CountField(lo As ListObject, ByVal fieldName As String, ByVal targetValue As String) As Long
+    Dim arr As Variant, i As Long, total As Long
+    Dim v As String
+    arr = lo.ListColumns(fieldName).DataBodyRange.Value
+    total = 0
+    If IsArray(arr) Then
+        For i = 1 To UBound(arr, 1)
+            v = Trim$(CStr(arr(i, 1)))
+            If LCase$(v) = LCase$(targetValue) Then total = total + 1
+        Next i
+    Else
+        v = Trim$(CStr(arr))
+        If LCase$(v) = LCase$(targetValue) Then total = 1
+    End If
+    CountField = total
+End Function
+
+Private Function CountBarreras(lo As ListObject) As Long
+    Dim arr As Variant, i As Long, total As Long
+    Dim v As String
+    arr = lo.ListColumns("barrera_acceso").DataBodyRange.Value
+    total = 0
+    If IsArray(arr) Then
+        For i = 1 To UBound(arr, 1)
+            v = Trim$(CStr(arr(i, 1)))
+            If Len(v) > 0 And LCase$(v) <> "n/a" And LCase$(v) <> "sin dato" Then total = total + 1
+        Next i
+    Else
+        v = Trim$(CStr(arr))
+        If Len(v) > 0 And LCase$(v) <> "n/a" And LCase$(v) <> "sin dato" Then total = 1
+    End If
+    CountBarreras = total
+End Function
+
+Private Function CountNoSolucionadas(lo As ListObject) As Long
+    Dim arr As Variant, i As Long, total As Long
+    Dim v As String
+    arr = lo.ListColumns("estadosolicitud").DataBodyRange.Value
+    total = 0
+    If IsArray(arr) Then
+        For i = 1 To UBound(arr, 1)
+            v = Trim$(CStr(arr(i, 1)))
+            If Len(v) > 0 And LCase$(v) <> "solucionada" Then total = total + 1
+        Next i
+    Else
+        v = Trim$(CStr(arr))
+        If Len(v) > 0 And LCase$(v) <> "solucionada" Then total = 1
+    End If
+    CountNoSolucionadas = total
+End Function
+
+Private Function IsExcluded(value As String, arr As Variant) As Boolean
+    Dim i As Long
+    If IsArray(arr) Then
+        For i = LBound(arr) To UBound(arr)
+            If LCase$(Trim$(CStr(arr(i)))) = LCase$(Trim$(value)) Then
+                IsExcluded = True
+                Exit Function
+            End If
+        Next i
+    End If
+    IsExcluded = False
+End Function
+
+Private Sub ClearRange(ws As Worksheet, ByVal startRow As Long, ByVal endRow As Long, ByVal startCol As Long, ByVal endCol As Long)
     Dim r As Long, c As Long
-    For r = 15 To 110
-        For c = 2 To 11
-            If c <> 9 Then
+    For r = startRow To endRow
+        For c = startCol To endCol
+            If Not (c = 6 Or c = 9) Then
                 ws.Cells(r, c).ClearContents
             End If
         Next c
     Next r
 End Sub
 
-Private Sub LlenarBloqueCategoria(ws As Worksheet, ByVal filaIni As Long, ByVal colCat As Long, ByVal colVal As Long, lo As ListObject, ByVal nombreCampo As String, ParamArray excepciones() As Variant)
-    Dim dict As Object, v As Variant
-    Dim i As Long, n As Long, fila As Long
-    Dim dato As String, total As Long, valor As Long
-    Dim arr As Variant, claves As Variant, items As Variant
-    Dim key As Variant, item As Variant
-    Dim ok As Boolean
-
-    Set dict = CreateObject("Scripting.Dictionary")
-    v = lo.ListColumns(nombreCampo).DataBodyRange.Value
-    If IsArray(v) Then
-        For i = 1 To UBound(v, 1)
-            dato = Trim$(CStr(v(i, 1)))
-            If Len(dato) > 0 Then
-                ok = False
-                For Each key In excepciones
-                    If LCase$(dato) = LCase$(CStr(key)) Then ok = True
-                Next key
-                If Not ok Then
-                    dict(dato) = dict(dato) + 1
-                End If
-            End If
-        Next i
-    Else
-        dato = Trim$(CStr(v))
-        If Len(dato) > 0 Then
-            ok = False
-            For Each key In excepciones
-                If LCase$(dato) = LCase$(CStr(key)) Then ok = True
-            Next key
-            If Not ok Then dict(dato) = dict(dato) + 1
-        End If
-    End If
-
-    If dict.Count = 0 Then Exit Sub
-
-    claves = dict.Keys
-    items = dict.Items
-    For i = LBound(items) To UBound(items)
-        For n = i + 1 To UBound(items)
-            If items(n) > items(i) Then
-                SwapVariant claves, i, n
-                SwapVariant items, i, n
-            End If
-        Next n
-    Next i
-
-    fila = filaIni
-    For i = LBound(keysToArray(claves)) To UBound(keysToArray(claves))
-        If fila > 100 Then Exit For
-        ws.Cells(fila, colCat).Value = claves(i)
-        ws.Cells(fila, colVal).Value = items(i)
-        fila = fila + 1
-    Next i
+Private Sub SwapVariant(ByRef arr As Variant, ByVal i As Long, ByVal j As Long)
+    Dim tmp As Variant
+    tmp = arr(i)
+    arr(i) = arr(j)
+    arr(j) = tmp
 End Sub
-
-Private Sub LlenarBloqueEPS(ws As Worksheet, ByVal filaIni As Long)
-    Dim lo As ListObject, dict As Object
-    Dim arrEps As Variant, arrPri As Variant
-    Dim i As Long, fila As Long, total As Long
-    Dim dato As String, prioridad As String
-    Dim claves As Variant, items As Variant
-    Dim key As Variant, item As Variant
-
-    Set lo = ThisWorkbook.Worksheets(HOJA_TABLA).ListObjects(NOMBRE_TABLA)
-    Set dict = CreateObject("Scripting.Dictionary")
-    arrEps = lo.ListColumns("epsvigentesg").DataBodyRange.Value
-    arrPri = lo.ListColumns("prioridad_caso").DataBodyRange.Value
-
-    If IsArray(arrEps) Then
-        For i = 1 To UBound(arrEps, 1)
-            dato = Trim$(CStr(arrEps(i, 1)))
-            If Len(dato) > 0 Then
-                dict(dato) = dict(dato) + 1
-            End If
-        Next i
-    Else
-        dato = Trim$(CStr(arrEps))
-        If Len(dato) > 0 Then dict(dato) = dict(dato) + 1
-    End If
-
-    If dict.Count = 0 Then Exit Sub
-
-    claves = dict.Keys
-    items = dict.Items
-    For i = LBound(items) To UBound(items)
-        For total = i + 1 To UBound(items)
-            If items(total) > items(i) Then
-                SwapVariant claves, i, total
-                SwapVariant items, i, total
-            End If
-        Next total
-    Next i
-
-    fila = filaIni
-    For i = LBound(keysToArray(claves)) To UBound(keysToArray(claves))
-        If fila > 75 Then Exit For
-        ws.Cells(fila, 7).Value = claves(i)
-        ws.Cells(fila, 8).Value = items(i)
-        fila = fila + 1
-    Next i
-End Sub
-
-Private Function CuentaCampo(lo As ListObject, ByVal nombreCampo As String, ByVal valor As String) As Long
-    Dim arr As Variant, i As Long
-    Dim v As String, n As Long
-    arr = lo.ListColumns(nombreCampo).DataBodyRange.Value
-    n = 0
-    If IsArray(arr) Then
-        For i = 1 To UBound(arr, 1)
-            v = Trim$(CStr(arr(i, 1)))
-            If LCase$(v) = LCase$(valor) Then n = n + 1
-        Next i
-    Else
-        v = Trim$(CStr(arr))
-        If LCase$(v) = LCase$(valor) Then n = 1
-    End If
-    CuentaCampo = n
-End Function
-
-Private Function CuentaBarreras(lo As ListObject) As Long
-    Dim arr As Variant, i As Long, n As Long
-    Dim v As String
-    arr = lo.ListColumns("barrera_acceso").DataBodyRange.Value
-    n = 0
-    If IsArray(arr) Then
-        For i = 1 To UBound(arr, 1)
-            v = Trim$(CStr(arr(i, 1)))
-            If Len(v) > 0 And LCase$(v) <> "n/a" And LCase$(v) <> "sin dato" Then n = n + 1
-        Next i
-    Else
-        v = Trim$(CStr(arr))
-        If Len(v) > 0 And LCase$(v) <> "n/a" And LCase$(v) <> "sin dato" Then n = 1
-    End If
-    CuentaBarreras = n
-End Function
-
-Private Function CuentaNoSolucionadas(lo As ListObject) As Long
-    Dim arr As Variant, i As Long, n As Long
-    Dim v As String
-    arr = lo.ListColumns("estadosolicitud").DataBodyRange.Value
-    n = 0
-    If IsArray(arr) Then
-        For i = 1 To UBound(arr, 1)
-            v = Trim$(CStr(arr(i, 1)))
-            If Len(v) > 0 And LCase$(v) <> "solucionada" Then n = n + 1
-        Next i
-    Else
-        v = Trim$(CStr(arr))
-        If Len(v) > 0 And LCase$(v) <> "solucionada" Then n = 1
-    End If
-    CuentaNoSolucionadas = n
-End Function
 
 Private Function ExisteTabla(ws As Worksheet, nombre As String) As Boolean
     Dim lo As ListObject
@@ -463,26 +412,12 @@ Private Function ExisteTabla(ws As Worksheet, nombre As String) As Boolean
     ExisteTabla = Not lo Is Nothing
 End Function
 
-Private Sub SwapVariant(ByRef arr As Variant, ByVal i As Long, ByVal j As Long)
-    Dim tmp As Variant
-    tmp = arr(i)
-    arr(i) = arr(j)
-    arr(j) = tmp
-End Sub
-
-Private Function keysToArray(claves As Variant) As Variant
-    keysToArray = claves
-End Function
-
-'======================================================================
-'  UTILIDADES GENERALES
-'======================================================================
 Private Function HojaPorPatron(wb As Workbook, ByVal patron As String) As Worksheet
     Dim s As Worksheet
     For Each s In wb.Worksheets
         If s.Name Like patron Then Set HojaPorPatron = s: Exit Function
     Next s
-    Err.Raise vbObjectError + 510, , "No se encontro la hoja """ & patron & """ en el libro maestro."
+    Err.Raise vbObjectError + 510, , "No se encontró la hoja """ & patron & """ en el libro maestro."
 End Function
 
 Private Function UltimaFila(ws As Worksheet) As Long
@@ -497,9 +432,6 @@ Private Function UltimaColumna(ws As Worksheet) As Long
     If f Is Nothing Then UltimaColumna = 0 Else UltimaColumna = f.Column
 End Function
 
-'======================================================================
-'  WORD (mantener compatibilidad con Word)
-'======================================================================
 Private Function ActualizarWord(ByVal nFilas As Long) As String
     Dim wsR As Worksheet
     Dim ils As Object, shp As Object
@@ -519,7 +451,7 @@ Private Function ActualizarWord(ByVal nFilas As Long) As String
     mWdApp.Visible = WORD_VISIBLE
     mWdApp.DisplayAlerts = 0
     Set mWdDoc = mWdApp.Documents.Open(FileName:=RUTA_WORD, ReadOnly:=False, AddToRecentFiles:=False)
-    If mWdDoc.ReadOnly Then Err.Raise vbObjectError + 530, , "El Word esta abierto en otro lugar o es de solo lectura. Cierralo e intenta de nuevo."
+    If mWdDoc.ReadOnly Then Err.Raise vbObjectError + 530, , "El Word está abierto en otro lugar o es de solo lectura."
 
     For Each ils In mWdDoc.InlineShapes
         If ils.Type = 12 Then
@@ -535,7 +467,7 @@ Private Function ActualizarWord(ByVal nFilas As Long) As String
         End If
     Next shp
 
-    tablasOk = ActualizarTablasWord(mWdDoc, wsR, nFilas)
+    tablasOk = ActualizarTablasWord(mWdDoc)
     mWdDoc.Fields.Update
     mWdDoc.Repaginate
     mWdDoc.Save
@@ -544,45 +476,42 @@ Private Function ActualizarWord(ByVal nFilas As Long) As String
     mWdApp.Quit 0
     Set mWdApp = Nothing
 
-    ActualizarWord = "Graficos actualizados: " & hechos & " de " & total & vbCrLf & _
-                     "Tablas actualizadas: " & tablasOk & " de 10"
+    ActualizarWord = "Gráficos actualizados: " & hechos & " de " & total & vbCrLf & _
+                     "Tablas actualizadas: " & tablasOk
 End Function
 
 Private Function ActualizarUnGrafico(ch As Object, wsR As Worksheet) As Boolean
     On Error GoTo Falla
-    Dim titulo As String
-    titulo = ""
-    If ch.HasTitle Then titulo = ch.ChartTitle.Text
-
-    ' No hacemos nada especial si no existe titulo conocido.
-    If Len(titulo) = 0 Then Exit Function
-
-    ' Solo se actualiza si el grafico tiene titulo conocido.
-    ' Los titulos no dependen de gestantes.
-    ActualizarUnGrafico = True
+    If ch Is Nothing Then Exit Function
+    If ch.HasTitle Then
+        Dim titulo As String
+        titulo = ch.ChartTitle.Text
+        If Len(titulo) > 0 Then
+            ActualizarUnGrafico = True
+            Exit Function
+        End If
+    End If
     Exit Function
 Falla:
     ActualizarUnGrafico = False
 End Function
 
-Private Function ActualizarTablasWord(doc As Object, ws As Worksheet, ByVal nFilas As Long) As Long
+Private Function ActualizarTablasWord(doc As Object) As Long
     Dim t As Object, h As String, ok As Boolean, hechas As Long
     For Each t In doc.Tables
         h = TextoCelda(t, 1, 1)
         ok = False
-
         If h = "Indicador" Then ok = True
         ElseIf h = "Elemento" Then ok = True
         ElseIf h = "Grupo etario" Then ok = True
         ElseIf h = "Sexo" Then ok = True
         ElseIf h = "EPS" Then ok = True
-        ElseIf InStr(h, "riesgo") > 0 Then ok = True
+        ElseIf InStr(LCase$(h), "riesgo") > 0 Then ok = True
         ElseIf h = "Barrera de acceso" Then ok = True
-        ElseIf InStr(h, "Subclasif") > 0 Then ok = True
+        ElseIf InStr(LCase$(h), "subclasif") > 0 Then ok = True
         ElseIf h = "Estado" Then ok = True
         ElseIf h = "Tipo de solicitud" Then ok = True
         End If
-
         If ok Then hechas = hechas + 1
     Next t
     ActualizarTablasWord = hechas
@@ -598,7 +527,7 @@ Private Function TextoCelda(t As Object, ByVal r As Long, ByVal c As Long) As St
 End Function
 
 '============================================================
-' NOTA FINAL
-' Esta version esta pensada para que el usuario no tenga que mover filas ni columnas.
-' La macro carga TODOS los registros, actualiza el resumen y deja el dashboard listo para el archivo general.
+' FINAL
+' Esta versión mantiene la lógica de carga total, evita solapamiento
+' entre bloques del resumen y deja el dashboard ordenado sin mover celdas manualmente.
 '============================================================
